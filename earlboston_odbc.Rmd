@@ -1,0 +1,97 @@
+---
+title: 'GPU-accelerated Visualization: A Primer on Exploratory Data Analysis at Scale'
+output:
+  html_notebook: default
+editor_options: 
+  chunk_output_type: inline
+---
+Presenter: Randy Zwitch (@randyzwitch) <br>
+Location: [Enterprise Applications of R (EARL) 2018](https://earlconf.com/2018/boston/) (Boston) <br>
+GitHub: [https://github.com/omnisci/EARL2018](https://github.com/omnisci/EARL2018)
+
+<hr>
+![OmniSci Immerse Dashboard](omniscidash.png)
+
+The data for this example comes from the [EPA Air Markets Program](https://ampd.epa.gov/ampd/), which provides hourly pollution readings from each generator in the United States via [FTP download](ftp://newftp.epa.gov/DMDnLoad/emissions/hourly/monthly/). 
+
+## 1. Define a Connection Using ODBC
+
+Currently, OmniSci does not have a dedicated R package; to [connect to OmniSci from R](https://randyzwitch.com/mapd-odbc-rstudio-server/), we will use ODBC.
+
+Defining the table reference can take a while on the first run, but once the table reference is created, the actual dplyr statements will return instantly, even over 720 million records and 23 columns.
+
+```{r}
+library(dplyr)
+library(odbc)
+con <- dbConnect(odbc::odbc(), "OmniSci Production")
+ppe <- tbl(con, "powerplantemissions")
+colnames(ppe)
+```
+
+## 2. Full Table Summary
+
+To get a quick feel for the data, we can run a simple query to calculate the number of power plants per state and some averages for the amount of power generated (`gload_mw`) and average levels of pollution (`so2`, `nox`, `co2`):
+
+```{r}
+ppe %>%
+  group_by(state) %>% 
+  summarize(records = n(),
+            powerplants =         n_distinct(orispl_code),
+            mean_gload =          mean(gload_mw, na.rm=TRUE),
+            mean_sload =          mean(sload_1000lbs, na.rm=TRUE),
+            mean_so2 =            mean(so2_mass_lbs, na.rm=TRUE),
+            mean_so2_per_mmbtu =  mean(so2_rate_lbs_per_mmbtu, na.rm=TRUE),
+            mean_nox_lbs =        mean(nox_mass_lbs, na.rm=TRUE),
+            mean_nox_per_mmbtu =  mean(nox_rate_lbs_per_mmbtu, na.rm=TRUE),
+            mean_co2 =            mean(co2_mass_tons, na.rm=TRUE),
+            mean_co2_per_mmbtu =  mean(co2_rate_tons_per_mmbtu, na.rm=TRUE),
+            mean_heat =           mean(heat_input_mmbtu, na.rm=TRUE)
+            ) %>%
+    collect() %>%
+    arrange(desc(powerplants)) -> summary_by_state
+
+summary_by_state
+```
+
+## 3. Instant Access to Record-Level Data
+
+In the prior example, we summarized across the entire table in relatively short order (~375ms). This is due to the massive bandwidth and core density provided by multiple GPUs. However, actual _analysis_ is usually done with subsets of data, and OmniSci will be equally as fast (if not faster) here:
+
+```{r}
+ppe %>% 
+  filter(facility_name == "Colbert" & 
+         ts >= '2000-01-01 00:00:00' & ts <= '2000-01-07 23:00:00') %>%
+  select(ts, co2_mass_tons) %>%
+  collect() -> generator_perf
+
+generator_perf
+```
+
+Being able to retrieve data in 300ms across nearly a billion rows, we can use OmniSci as a caching/computation engine. While the Vega plot displayed below is static, with some htmlwidgets magic or a Shiny app/flexdashboard, we could evaluate _any_ power plant we wish.
+
+
+```{r}
+library(vegalite)
+vegalite() %>%
+  cell_size(600, 300) %>%
+  add_data(generator_perf) %>%
+  encode_x("ts", "temporal") %>%
+  encode_y("co2_mass_tons", "quantitative") %>%
+  mark_line()
+```
+
+## 4. But...We Could Do Even Better If There Were an R Package
+
+While ODBC allows plug-and-play into many analytics tools, ODBC is the _slowest_ way to work with OmniSci. Especially if your R session happens to be on the same server as OmniSci (as is this demo).
+
+### Sharing Memory Between Processes
+OmniSci supports in-process communication (IPC), both CPU and GPU, based on Apache Arrow. So instead of serializing the results, sending them to R and having R build a data frame using ODBC, the [Apache Arrow bindings for R](https://github.com/apache/arrow/tree/master/r) (in-development by Romain Francois and others) will allow for taking the results straight out of OmniSci and directly to R! 
+
+### Why Not Render Visualizations on the GPU?
+You can...and OmniSci does! OmniSci uses the [Vega visualization grammar](https://vega.github.io/vega/) to specify charts, and renders them on the GPU whenever it makes sense. This is even more efficient than IPC, as the data never leaves the GPU _and_ only a rendered PNG file is returned.
+
+While we might have been able to use [reticulate](https://github.com/rstudio/reticulate) for this example to use the OmniSci python package (pymapd) that has this implemented, but installing 50+ python dependencies to get R functionality feels sub-optimal.
+
+### Looking For Collaborators!
+
+If large scale, super-fast computation and visualization using GPUs within R interests you, I'd love to hear from you! At its core, OmniSci is an open-source company, and I'd love to collaborate with anyone interested in making a native R package a reality.

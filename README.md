@@ -7,7 +7,7 @@ Materials from the talk 'GPU-Accelerated visualisation: A primer on exploratory 
 
 ## Data
 
-The data are ~720MM records representing hourly pollution measurements for power generators in the United States from the [EPA Air Markets Program](https://ampd.epa.gov/ampd/). The data can be retrieved from their public FTP: ftp://newftp.epa.gov/DMDnLoad
+The data are ~720MM records representing hourly pollution measurements for power generators in the United States from the [EPA Air Markets Program](https://ampd.epa.gov/ampd/). The data can be retrieved from their public FTP: [ftp://newftp.epa.gov/DMDnLoad](ftp://newftp.epa.gov/DMDnLoad)
 
 ## Summary
 

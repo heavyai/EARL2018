@@ -1,6 +1,6 @@
 # EARL2018
 
-![](omniscidash.png)
+![](flexdashboard.gif)
 
 
 Materials from the talk 'GPU-Accelerated visualisation: A primer on exploratory data analysis at scale' by Randy Zwitch at EARL 2018 Boston.

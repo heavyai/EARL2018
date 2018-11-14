@@ -1,0 +1,85 @@
+---
+title: "OmniSci | Power Plant Emissions Flexdashboard"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: columns
+runtime: shiny
+---
+
+```{r global, include=FALSE}
+# load data in 'global' chunk so it can be shared by all users of the dashboard
+library(reticulate)
+library(vegalite)
+
+
+# 1. Load pymapd and connect -------------------------------------------------
+
+use_condaenv("pymapd_nofrozendict")
+pymapd <- import("pymapd")
+pd <- import("pandas")
+
+#Make connection to OmniSci
+conn <- pymapd$connect(user="mapd",
+                       password = Sys.getenv("passwd", ""),
+                       host="localhost",
+                       dbname = "mapd")
+
+pollutants <- c("co2_mass_tons",
+                "co2_rate_tons_per_mmbtu",
+                "nox_mass_lbs",
+                "nox_rate_lbs_per_mmbtu",
+                "so2_mass_lbs",
+                "so2_rate_lbs_per_mmbtu")
+
+generators <- pd$read_sql("select distinct facility_name from powerplantemissions", conn)
+
+datafunc <- function(pollutant, generator, s, e, conn) {
+      return(pd$read_sql(
+              sprintf("select 
+              ts, 
+              %s
+              from powerplantemissions where
+              facility_name = '%s' and 
+              ts >= '%s 00:00:00' and ts < '%s 00:00:00'
+              ", pollutant, generator, s, e),
+              conn))
+}
+
+```
+
+
+Column {.sidebar}
+-----------------------------------------------------------------------
+
+```{r}
+selectInput('pol', 'Pollutants', pollutants, selected = "co2_mass_tons")
+    
+selectInput('gen', 'Generators', generators[[1]], selected = "Colbert")
+
+dateInput('sdate', "Start Date", value = "2010-01-01")
+
+```
+
+Column
+-----------------------------------------------------------------------
+
+### Weekly Power Plant Emissions
+
+```{r}
+
+selectedData <- reactive({datafunc(
+                         input$pol, 
+                         input$gen, 
+                         input$sdate,
+                         as.Date(input$sdate) + 7,
+                         conn)})
+
+renderVegalite(
+vegalite() %>%
+  cell_size(800, 450) %>%
+  add_data(selectedData()) %>%
+  encode_x("ts", "temporal") %>%
+  encode_y(input$pol, "quantitative") %>%
+  mark_line()
+)
+```

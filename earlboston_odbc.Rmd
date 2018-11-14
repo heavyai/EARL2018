@@ -20,7 +20,7 @@ Currently, OmniSci does not have a dedicated R package; to [connect to OmniSci f
 
 Defining the table reference can take a while on the first run, but once the table reference is created, the actual dplyr statements will return instantly, even over 720 million records and 23 columns.
 
-```{r}
+```{r, message=FALSE}
 library(dplyr)
 library(odbc)
 con <- dbConnect(odbc::odbc(), "OmniSci Production")
